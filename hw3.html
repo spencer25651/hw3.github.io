@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <title>UNM CS 412/512 HW3</title>
+  <style>
+    body {
+      background: #111;
+      color: #ccc;
+      font-family: monospace;
+    }
+
+    textarea {
+      background: #222;
+      color: #0f0;
+      font: 14px monospace;
+      width: 400px;
+      height: 250px;
+    }
+
+    canvas {
+      border: 1px solid #444;
+    }
+
+    #controls {
+      width: 230px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background: #1a1a1a;
+      border: 1px solid #444;
+      padding: 10px;
+      box-sizing: border-box;
+    }
+
+    #controls h3 {
+      margin: 0 0 4px 0;
+      color: #9cf;
+      font-size: 13px;
+      border-bottom: 1px solid #444;
+      padding-bottom: 4px;
+    }
+
+    #controls label {
+      display: block;
+      font-size: 12px;
+      margin-bottom: 2px;
+    }
+
+    #controls select,
+    #controls button,
+    #controls input[type=range] {
+      width: 100%;
+      background: #222;
+      color: #ccc;
+      border: 1px solid #555;
+      font-family: monospace;
+      font-size: 12px;
+      padding: 3px;
+      box-sizing: border-box;
+    }
+
+    #controls button {
+      cursor: pointer;
+      margin-top: 2px;
+    }
+
+    #controls button:hover {
+      background: #333;
+    }
+
+    .row {
+      display: flex;
+      gap: 6px;
+    }
+
+    .checkrow {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+    }
+
+    .checkrow input {
+      width: auto;
+    }
+
+    hr {
+      border: none;
+      border-top: 1px solid #444;
+      margin: 4px 0;
+    }
+  </style>
+</head>
+
+<body>
+  <h2>Interactive Controls & Geometric Primitives</h2>
+  <p>Edit vertex and fragment shaders on the left to get the result instantly.<br>
+    Use mouse to drag and rotate the whole scene. <br>
+    Use arrow keys and w, s keys to move the camera.<br>
+    Use the control panel on the right to add primitives and animate them.<br>
+    Save your code to source file if you want to save it.<br>
+    Press F12 to see the console for debugging.</p>
+
+  <div style="display: flex; gap: 10px; align-items: flex-start;">
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      <div>
+        <b>Vertex Shader</b><br>
+        <textarea id="vertEditor"></textarea>
+      </div>
+      <div>
+        <b>Fragment Shader</b><br>
+        <textarea id="fragEditor"></textarea>
+      </div>
+    </div>
+    <div>
+      <canvas id="glcanvas" width="400" height="400"></canvas>
+    </div>
+
+    <div id="controls">
+      <h3>Scene Objects</h3>
+      <label for="newObjType">Add primitive</label>
+      <div class="row">
+        <select id="newObjType">
+          <option value="cube">Cube</option>
+          <option value="sphere">Sphere</option>
+          <option value="cylinder">Cylinder</option>
+          <option value="cone">Cone</option>
+          <option value="torus">Torus</option>
+        </select>
+        <button id="addObjBtn" style="width:70px;">Add</button>
+      </div>
+
+      <label for="objectSelect">Selected object</label>
+      <select id="objectSelect"></select>
+      <button id="removeObjBtn">Remove Selected</button>
+
+      <hr>
+      <h3>Motion</h3>
+      <label for="motionSelect">Motion type</label>
+      <select id="motionSelect">
+        <option value="none">None</option>
+        <option value="spin">Spin (rotation)</option>
+        <option value="orbit">Orbit (translation)</option>
+        <option value="bounce">Bounce (translation)</option>
+        <option value="pulse">Pulse (scaling)</option>
+      </select>
+
+      <label for="speedSlider">Speed: <span id="speedVal"></span></label>
+      <input type="range" id="speedSlider" min="0" max="3" step="0.05" value="1">
+
+      <label for="scaleSlider">Base scale: <span id="scaleVal"></span></label>
+      <input type="range" id="scaleSlider" min="0.3" max="2" step="0.05" value="1">
+
+      <div class="checkrow"><input type="checkbox" id="shearToggle"> <label for="shearToggle" style="margin:0;">Shear (skew)</label></div>
+      <div class="checkrow"><input type="checkbox" id="mirrorToggle"> <label for="mirrorToggle" style="margin:0;">Mirror (reflect X)</label></div>
+
+      <hr>
+      <h3>View</h3>
+      <button id="projToggleBtn">Toggle Perspective / Ortho</button>
+      <button id="resetSceneBtn">Reset Scene</button>
+    </div>
+  </div>
+
+  <!-- Vertex shader -->
+  <script id="vertex-shader" type="x-shader/x-vertex">#version 300 es
+in vec3 aPosition;
+in vec3 aColor;
+
+uniform float uTime; //time in sec
+uniform mat4 uModelViewMatrix;
+uniform mat4 uProjectionMatrix;
+uniform mat4 uModelTransformationMatrix;
+
+out vec3 vColor;
+
+void main() {
+  gl_Position = uProjectionMatrix * uModelViewMatrix * uModelTransformationMatrix * vec4(aPosition,1.0);
+  vColor = aColor;
+}
+</script>
+  <!-- Fragment Shader -->
+  <script id="fragment-shader" type="x-shader/x-fragment">#version 300 es
+precision mediump float;
+in vec3 vColor;
+
+out vec4 fragColor;
+
+void main() {
+  fragColor = vec4(vColor,1.0);
+}
+</script>
+
+  <script src="primitives.js"></script>
+  <script src="transformations.js"></script>
+
+  <script>
+    function createShader(gl, type, source) {
+      let shader = gl.createShader(type);
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        throw new Error(gl.getShaderInfoLog(shader));
+      }
+      return shader;
+    }
+
+    function createProgram(gl, vsSource, fsSource) {
+      let vs = createShader(gl, gl.VERTEX_SHADER, vsSource);
+      let fs = createShader(gl, gl.FRAGMENT_SHADER, fsSource);
+      let prog = gl.createProgram();
+      gl.attachShader(prog, vs);
+      gl.attachShader(prog, fs);
+      gl.linkProgram(prog);
+      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+        throw new Error(gl.getProgramInfoLog(prog));
+      }
+      return prog;
+    }
+
+    // WebGL setup
+    const canvas = document.getElementById("glcanvas");
+    const gl = canvas.getContext("webgl2");
+    if (!gl) alert("WebGL2 not supported");
+
+    let vertEditor = document.getElementById("vertEditor");
+    let fragEditor = document.getElementById("fragEditor");
+    vertEditor.value = document.getElementById("vertex-shader").textContent;
+    fragEditor.value = document.getElementById("fragment-shader").textContent;
+
+    let program, posLoc, colorLoc, timeLoc, uMVM, uPM, uMTM;
+
+    function initShaderProgram() {
+      try {
+        program = createProgram(gl, vertEditor.value, fragEditor.value);
+        gl.useProgram(program);
+        posLoc = gl.getAttribLocation(program, "aPosition");
+        colorLoc = gl.getAttribLocation(program, "aColor");
+        timeLoc = gl.getUniformLocation(program, "uTime");
+        uMVM = gl.getUniformLocation(program, "uModelViewMatrix");
+        uPM = gl.getUniformLocation(program, "uProjectionMatrix");
+        uMTM = gl.getUniformLocation(program, "uModelTransformationMatrix");
+      } catch (e) { console.error(e); }
+    }
+    initShaderProgram();
+    vertEditor.onkeyup = initShaderProgram;
+    fragEditor.onkeyup = initShaderProgram;
+
+    // -------------------------------------------------------------------
+    // Scene objects: each holds its own GL buffers plus animation state.
+    // -------------------------------------------------------------------
+    let sceneObjects = [];
+    let nextId = 1;
+    let selectedId = null;
+
+    const objectSelect = document.getElementById("objectSelect");
+    const motionSelect = document.getElementById("motionSelect");
+    const speedSlider = document.getElementById("speedSlider");
+    const scaleSlider = document.getElementById("scaleSlider");
+    const speedVal = document.getElementById("speedVal");
+    const scaleVal = document.getElementById("scaleVal");
+    const shearToggle = document.getElementById("shearToggle");
+    const mirrorToggle = document.getElementById("mirrorToggle");
+
+    function addSceneObject(type, basePos) {
+      const geo = PRIMITIVE_FACTORY[type]();
+
+      const vbo = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+      gl.bufferData(gl.ARRAY_BUFFER, geo.positions, gl.STATIC_DRAW);
+
+      const cbo = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, cbo);
+      gl.bufferData(gl.ARRAY_BUFFER, geo.colors, gl.STATIC_DRAW);
+
+      const ibo = gl.createBuffer();
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, geo.indices, gl.STATIC_DRAW);
+
+      const obj = {
+        id: nextId++,
+        type,
+        vbo, cbo, ibo,
+        indexCount: geo.indices.length,
+        basePos: basePos || [(Math.random() * 4 - 2), (Math.random() * 2 - 1), (Math.random() * 2 - 1)],
+        motion: "spin",
+        speed: 1.0,
+        baseScale: 1.0,
+        shearOn: false,
+        mirrorOn: false
+      };
+      sceneObjects.push(obj);
+      selectedId = obj.id;
+      refreshObjectSelect();
+      syncControlsToSelected();
+      return obj;
+    }
+
+    function removeSceneObject(id) {
+      const idx = sceneObjects.findIndex(o => o.id === id);
+      if (idx === -1) return;
+      const obj = sceneObjects[idx];
+      gl.deleteBuffer(obj.vbo);
+      gl.deleteBuffer(obj.cbo);
+      gl.deleteBuffer(obj.ibo);
+      sceneObjects.splice(idx, 1);
+      selectedId = sceneObjects.length ? sceneObjects[0].id : null;
+      refreshObjectSelect();
+      syncControlsToSelected();
+    }
+
+    function getSelected() {
+      return sceneObjects.find(o => o.id === selectedId) || null;
+    }
+
+    function refreshObjectSelect() {
+      objectSelect.innerHTML = "";
+      sceneObjects.forEach(o => {
+        const opt = document.createElement("option");
+        opt.value = o.id;
+        opt.textContent = `${o.type} #${o.id}`;
+        if (o.id === selectedId) opt.selected = true;
+        objectSelect.appendChild(opt);
+      });
+    }
+
+    function syncControlsToSelected() {
+      const obj = getSelected();
+      if (!obj) return;
+      motionSelect.value = obj.motion;
+      speedSlider.value = obj.speed;
+      scaleSlider.value = obj.baseScale;
+      speedVal.textContent = Number(obj.speed).toFixed(2);
+      scaleVal.textContent = Number(obj.baseScale).toFixed(2);
+      shearToggle.checked = obj.shearOn;
+      mirrorToggle.checked = obj.mirrorOn;
+    }
+
+    objectSelect.onchange = () => {
+      selectedId = Number(objectSelect.value);
+      syncControlsToSelected();
+    };
+
+    document.getElementById("addObjBtn").onclick = () => {
+      addSceneObject(document.getElementById("newObjType").value);
+    };
+
+    document.getElementById("removeObjBtn").onclick = () => {
+      if (selectedId !== null) removeSceneObject(selectedId);
+    };
+
+    motionSelect.onchange = () => {
+      const obj = getSelected();
+      if (obj) obj.motion = motionSelect.value;
+    };
+
+    speedSlider.oninput = () => {
+      const obj = getSelected();
+      speedVal.textContent = Number(speedSlider.value).toFixed(2);
+      if (obj) obj.speed = Number(speedSlider.value);
+    };
+
+    scaleSlider.oninput = () => {
+      const obj = getSelected();
+      scaleVal.textContent = Number(scaleSlider.value).toFixed(2);
+      if (obj) obj.baseScale = Number(scaleSlider.value);
+    };
+
+    shearToggle.onchange = () => {
+      const obj = getSelected();
+      if (obj) obj.shearOn = shearToggle.checked;
+    };
+
+    mirrorToggle.onchange = () => {
+      const obj = getSelected();
+      if (obj) obj.mirrorOn = mirrorToggle.checked;
+    };
+
+    function resetScene() {
+      // remove everything, then rebuild the default layout
+      [...sceneObjects].forEach(o => removeSceneObject(o.id));
+      addSceneObject("cube", [-1.5, 1, 0]).motion = "spin";
+      addSceneObject("sphere", [1.5, 1, 0]).motion = "orbit";
+      addSceneObject("cylinder", [-1.5, -1, 0]).motion = "pulse";
+      const cone = addSceneObject("cone", [1.5, -1, 0]);
+      cone.motion = "bounce";
+      cone.shearOn = true;
+      const torus = addSceneObject("torus", [0, 0, 0]);
+      torus.motion = "none";
+      torus.mirrorOn = true;
+      selectedId = sceneObjects[0].id;
+      refreshObjectSelect();
+      syncControlsToSelected();
+    }
+    document.getElementById("resetSceneBtn").onclick = resetScene;
+
+    // Mouse and keyboard interactions (rotate the whole scene, move the camera)
+    let mouseDown = false, lastX, lastY, sceneRotX = 0, sceneRotY = 0;
+    let camX = 0, camY = 0, camZ = -6;
+
+    canvas.addEventListener('mousedown', e => { mouseDown = true; lastX = e.clientX; lastY = e.clientY; });
+    canvas.addEventListener('mouseup', () => mouseDown = false);
+    canvas.addEventListener('mousemove', e => {
+      if (!mouseDown) return;
+      let dx = e.clientX - lastX;
+      let dy = e.clientY - lastY;
+      sceneRotY += dx * 0.01;
+      sceneRotX += dy * 0.01;
+      lastX = e.clientX; lastY = e.clientY;
+    });
+
+    document.addEventListener('keydown', e => {
+      const step = 0.2;
+      switch (e.key) {
+        case 'ArrowUp': camY -= step; break;
+        case 'ArrowDown': camY += step; break;
+        case 'ArrowLeft': camX += step; break;
+        case 'ArrowRight': camX -= step; break;
+        case 'w': camZ += step; break;
+        case 's': camZ -= step; break;
+      }
+    });
+
+    // Projection setup
+    let fov = Math.PI / 4, aspect = canvas.width / canvas.height, zNear = 0.1, zFar = 100;
+    let orthoSize = 2.5;
+
+    // Perspective and Orthographic projection
+    let projPerspective = perspective(fov, aspect, zNear, zFar);
+    let projOrtho = matMul(
+      box2Cube(-orthoSize * aspect, orthoSize * aspect, -orthoSize, orthoSize, zNear, zFar),
+      flipZ()
+    );
+    let proj = projOrtho;
+
+    document.getElementById("projToggleBtn").onclick = () => {
+      proj = (proj === projOrtho) ? projPerspective : projOrtho;
+    };
+
+    let startTime = Date.now();
+
+    // Build this object's local transformation matrix (its own animated
+    // rotation / translation / scale / shear / mirror), independent of the
+    // shared scene rotation applied by mouse drag.
+    function computeObjectTransform(obj, t) {
+      const mats = [];
+
+      // position, animated by the chosen motion type
+      let pos = obj.basePos.slice();
+      if (obj.motion === "orbit") {
+        pos[0] += Math.cos(t * obj.speed) * 1.2;
+        pos[2] += Math.sin(t * obj.speed) * 1.2;
+      } else if (obj.motion === "bounce") {
+        pos[1] += Math.sin(t * obj.speed * 2.0) * 0.7;
+      }
+      mats.push(mat4TranslationMatrix(pos));
+
+      // rotation: spin around the object's own Y axis
+      if (obj.motion === "spin") {
+        mats.push(mat4RotateY(mat4Identity(), t * obj.speed));
+      }
+
+      // scaling: constant base scale, optionally pulsing
+      let s = obj.baseScale;
+      if (obj.motion === "pulse") {
+        s *= 1 + 0.35 * Math.sin(t * obj.speed * 2.0);
+      }
+      mats.push(mat4ScaleMatrix(s, s, s));
+
+      // shear / mirror toggles, independent of motion type
+      if (obj.shearOn) {
+        mats.push(mat4ShearMatrix(0.5 * Math.sin(t * (obj.speed || 1)), 0, 0, 0, 0, 0));
+      }
+      if (obj.mirrorOn) {
+        mats.push(mat4ReflectMatrix(-1, 1, 1));
+      }
+
+      return matMul(...mats);
+    }
+
+    function render() {
+      gl.enable(gl.DEPTH_TEST);
+      gl.clearColor(0, 0, 0, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+      // scene rotation matrix from mouse drag, shared by every object
+      let cx = Math.cos(sceneRotY), sx = Math.sin(sceneRotY);
+      let cy = Math.cos(sceneRotX), sy = Math.sin(sceneRotX);
+      let rotX = [1, 0, 0, 0, 0, cy, sy, 0, 0, -sy, cy, 0, 0, 0, 0, 1];
+      let rotY = [cx, 0, -sx, 0, 0, 1, 0, 0, sx, 0, cx, 0, 0, 0, 0, 1];
+      let sceneRotation = multiplyMat4(rotY, rotX);
+
+      // camera translation (shared model-view matrix)
+      let modelViewMatrix = mat4Translate(mat4Identity(), [camX, camY, camZ]);
+
+      let t = (Date.now() - startTime) / 1000.0;
+
+      gl.uniform1f(timeLoc, t);
+      gl.uniformMatrix4fv(uPM, false, proj);
+      gl.uniformMatrix4fv(uMVM, false, modelViewMatrix);
+
+      for (const obj of sceneObjects) {
+        const localTransform = computeObjectTransform(obj, t);
+        const modelTransformationMatrix = matMul(sceneRotation, localTransform);
+        gl.uniformMatrix4fv(uMTM, false, modelTransformationMatrix);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, obj.vbo);
+        gl.enableVertexAttribArray(posLoc);
+        gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, obj.cbo);
+        gl.enableVertexAttribArray(colorLoc);
+        gl.vertexAttribPointer(colorLoc, 3, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, obj.ibo);
+        gl.drawElements(gl.TRIANGLES, obj.indexCount, gl.UNSIGNED_SHORT, 0);
+      }
+    }
+
+    // Initialize when page loads
+    window.onload = function () {
+      resetScene();
+      setInterval(render, 30);
+    }
+
+  </script>
+</body>
+
+</html>
